@@ -1,0 +1,18 @@
+# PyInstaller output. The binaries are ~32 MB together and are rebuilt with
+# `python build.py`, so they are not worth carrying in git history.
+dist/
+build/
+*.spec
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Nothing here should ever be committed, but be explicit: bwprx's own state
+# (the loopback API token, the audit log, local settings) lives in
+# %LOCALAPPDATA%\bwprx\ and never in the repo.
+runtime.json
+audit.log
+config.json
+*.log
