@@ -131,6 +131,17 @@ bwprx-client find                 # everything
 bwprx-client find --search aws --json
 ```
 
+`find` widens the search itself instead of relying on `bw`'s own strict
+`--search`. A multi-word query like `pexel api key` is tried, in order, as:
+the exact phrase, then all words in any order, then all-but-one word, and so
+on down to any single word matching — stopping at the first stage that finds
+something. There is no privacy reason to be strict here: `find` only ever
+returns metadata (names, usernames, URIs, folders), never secrets. The
+approval dialog for the search shows exactly which items that stage matched
+and which stage was used, so you can decline if the loosened result pulls in
+something you did not mean to expose (e.g. a `google` item surfacing for a
+`google key` search) — see [SECURITY.md](SECURITY.md).
+
 ### Use a credential without seeing it — preferred
 
 ```powershell

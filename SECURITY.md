@@ -89,6 +89,19 @@ other Bitwarden clients.
 accounts you hold is itself worth protecting. Turn it off with
 `require_approval_for_list: false` if the prompts are not worth it to you.
 
+**`find` matches loosely, on purpose, and shows you what it found before you
+approve.** A guessed multi-word query (`pexel api key`) rarely equals a real
+item title, so bwprx tries the query progressively looser — exact phrase, then
+all words in any order, then dropping one word at a time, down to any single
+word — and stops at the first stage that matches anything. This is safe to do
+because the widening only affects metadata (names, usernames, URIs, folders),
+never secrets, and the approval dialog lists the actual matched items and
+which stage found them, not just a count. If a loosened match pulls in
+something you did not mean the agent to see about — an unrelated item
+surfacing for `google key`, say — that is exactly what the dialog is for:
+decline it there. A denial costs nothing; a search that silently comes back
+empty because it was too strict is the worse failure mode.
+
 **Writes remember for at most 5 minutes.** Writes are rare and not reversible.
 A 6-hour standing permission to modify vault items is not a trade worth making.
 

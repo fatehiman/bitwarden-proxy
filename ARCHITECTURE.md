@@ -106,6 +106,16 @@ Status codes: `403` denied, `404` not found, `423` locked, `400` bad request,
 `/v1/list` never returns `password`, `totp`, `notes` or custom fields — they are
 stripped in `vault.list_items()` before the data leaves that function.
 
+A `search` string is not passed to `bw` — `bw --search` treats it as one
+strict pattern and misses obvious matches for a multi-word guess. Instead
+`broker.list_items()` fetches the full (metadata-only) list once and matches
+it in Python with `_search_stages()`, trying the query as an exact phrase,
+then all words in any order, then progressively fewer required words, down to
+any single word — stopping at the first stage with a result. The response
+carries a `match_method` field naming which stage matched, and the approval
+dialog lists the matched items themselves, not just a count, so a looser
+match is never a surprise.
+
 ## Folders
 
 Bitwarden folders are a **flat list of names**; the tree in the apps is a

@@ -17,9 +17,78 @@ from .vault import Locked, NotFound, Vault, VaultError
 
 READ_FIELDS = ["username", "password", "totp", "uri", "notes", "domain", "credential_id"]
 
+# How many matched items the approval dialog lists individually before
+# collapsing the rest into "... (+N more)". No secrets appear in this list
+# either way - just the same name/username/folder that `find` itself returns.
+PREVIEW_ITEM_CAP = 15
+
 
 class Denied(RuntimeError):
     """The user said no, or the dialog timed out."""
+
+
+def _item_text(item: Dict[str, Any]) -> str:
+    """Everything about an item that a plain-text search is allowed to match:
+    name, username, URIs - never notes or any secret field."""
+    parts = [item.get("name") or "", item.get("username") or ""]
+    parts += item.get("uris") or []
+    return " ".join(parts).lower()
+
+
+def _search_stages(items: List[Dict[str, Any]], query: str):
+    """Widen a search step by step until something matches.
+
+    `bw list items --search` treats the whole query as one strict pattern, so
+    a query like "pexel api key" - three words describing one item - often
+    matches nothing even though the item is right there under a slightly
+    different name. Real vault contents are metadata (titles, usernames,
+    URIs), not secrets, so there is no privacy reason to be this strict about
+    finding them; the approval dialog is what actually decides whether the
+    result reaches the agent, not the matching pass.
+
+    Stages, from strictest to loosest, stopping at the first with any match:
+
+    1. the exact phrase, as typed.
+    2. every word present (any order).
+    3. all but one word present, then all but two, ... down to
+    4. any single word present.
+
+    Yields `(label, matched_items)` pairs lazily so the caller can stop at the
+    first non-empty stage.
+    """
+    terms = [t for t in query.lower().split() if t]
+    if not terms:
+        yield "(everything)", items
+        return
+
+    texts = [(item, _item_text(item)) for item in items]
+
+    phrase = " ".join(terms)
+    if len(terms) > 1:
+        yield f'exact phrase "{query.strip()}"', [i for i, t in texts if phrase in t]
+
+    n = len(terms)
+    for k in range(n, 0, -1):
+        matched = [i for i, t in texts if sum(term in t for term in terms) >= k]
+        if k == n:
+            label = "exact word match" if n == 1 else "all words matched (any order)"
+        elif k == 1:
+            label = "loosened - any one word matched"
+        else:
+            label = f"loosened - at least {k} of {n} words matched"
+        yield label, matched
+
+
+def _preview_lines(items: List[Dict[str, Any]]) -> str:
+    lines = []
+    for item in items[:PREVIEW_ITEM_CAP]:
+        name = item.get("name") or "(unnamed)"
+        user = item.get("username") or "(no username)"
+        where = item.get("folder") or "(no folder)"
+        lines.append(f"{name}  -  {user}  -  {where}")
+    if len(items) > PREVIEW_ITEM_CAP:
+        lines.append(f"... (+{len(items) - PREVIEW_ITEM_CAP} more)")
+    return "\n".join(lines) if lines else "(none)"
 
 
 class Broker:
@@ -152,11 +221,24 @@ class Broker:
         that the item is called "deb13 root". Searching is therefore a normal
         part of the flow, not an escape hatch - but it still shows what accounts
         exist, so by default it is approved like anything else.
+
+        The matching itself is done here, not by `bw`'s own `--search`, which
+        treats a multi-word query as one strict pattern and often finds
+        nothing for a guessed query like "pexel api key". Instead the full
+        (metadata-only) list is fetched once and matched progressively - see
+        `_search_stages` - stopping at the first stage that finds anything.
+        Whatever that stage returns is exactly what the approval dialog shows
+        and exactly what the agent gets if approved, so a looser match never
+        means a surprise: the user sees the actual result list before saying
+        yes.
         """
         self.ensure_unlocked()
-        items = self.vault.list_items(search)
+        items = self.vault.list_items(None)
         # A folder filter needs the folder list whatever the caller asked for.
         folders = self.vault.list_folders() if (include_folders or folder) else []
+        names = {f["id"]: f["name"] for f in folders}
+        for item in items:
+            item["folder"] = names.get(item.get("folderId"))
 
         if folder is not None:
             wanted = self.vault.normalise_folder(folder)
@@ -167,16 +249,23 @@ class Broker:
                 raise NotFound(f"No folder named {wanted!r}")
             items = [i for i in items if i.get("folderId") in ids]
 
+        match_label = "(everything)"
+        if search:
+            for label, matched in _search_stages(items, search):
+                if matched:
+                    items, match_label = matched, label
+                    break
+            else:
+                items, match_label = [], "no match, even loosened to a single word"
+
         if config.get("require_approval_for_list"):
-            preview = ", ".join(i["name"] or "(unnamed)" for i in items[:6])
-            if len(items) > 6:
-                preview += f", ... (+{len(items) - 6} more)"
             details = [
                 ("Search", search or "(everything)"),
                 ("Folder", self.vault.normalise_folder(folder) or "(no folder)"
                            if folder is not None else "(any)"),
+                ("Match method", match_label),
                 ("Matches", str(len(items))),
-                ("Titles", preview or "(none)"),
+                ("Items that would be returned", _preview_lines(items)),
                 ("Returns", "names, ids, usernames, URIs and folders - "
                             "no passwords, TOTP codes or notes"),
             ]
@@ -189,10 +278,8 @@ class Broker:
                 default_seconds=int(config.get("default_read_remember_seconds")))
 
         self.vault.touch()
-        names = {f["id"]: f["name"] for f in folders}
-        for item in items:
-            item["folder"] = names.get(item.get("folderId"))
-        return {"items": items, "folders": folders, "count": len(items)}
+        return {"items": items, "folders": folders, "count": len(items),
+                "match_method": match_label}
 
     # ------------------------------------------------------------------- write
 
