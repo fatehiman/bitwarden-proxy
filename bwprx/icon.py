@@ -6,11 +6,13 @@ from PIL import Image, ImageDraw
 
 LOCKED = (110, 116, 124)     # grey
 UNLOCKED = (32, 150, 74)     # green
+UNATTENDED = (210, 30, 30)  # red, while every request is auto-approved
 BUSY = (200, 140, 20)        # amber, while a dialog is waiting
 
 
 def make(state: str = "locked", size: int = 64) -> Image.Image:
-    colour = {"unlocked": UNLOCKED, "busy": BUSY}.get(state, LOCKED)
+    colour = {"unlocked": UNLOCKED, "busy": BUSY,
+                "unattended": UNATTENDED}.get(state, LOCKED)
     img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
 

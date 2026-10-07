@@ -33,6 +33,13 @@ WRITE_REMEMBER_CHOICES = [
 # trust always has a length. Writes can be trusted this long too.
 TRUST_CHOICES = [c for c in READ_REMEMBER_CHOICES if c[1] > 0]
 
+# Tray menu "Unattended mode" durations. (label, seconds)
+UNATTENDED_CHOICES = [
+    ("1 minute", 60), ("5 minutes", 5 * 60), ("15 minutes", 15 * 60),
+    ("30 minutes", 30 * 60), ("1 hour", 3600), ("2 hours", 2 * 3600),
+    ("3 hours", 3 * 3600), ("4 hours", 4 * 3600), ("8 hours", 8 * 3600),
+]
+
 DEFAULTS: Dict[str, Any] = {
     # Vault session
     "idle_timeout_minutes": 360,        # 6h; timer resets on every approved request

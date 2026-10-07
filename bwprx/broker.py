@@ -7,6 +7,7 @@ object, so there is exactly one place where "may this happen?" is answered.
 from __future__ import annotations
 
 import threading
+import time
 from typing import Any, Dict, List, Optional, Tuple
 
 from . import audit, config
@@ -99,6 +100,7 @@ class Broker:
         self._unlock_lock = threading.Lock()
         # Serialised so two agents cannot stack two dialogs on top of each other.
         self._approval_lock = threading.Lock()
+        self._unattended_until = 0.0
         self.on_activity = None  # set by the tray for balloon notifications
 
     # ------------------------------------------------------------------ unlock
@@ -134,6 +136,13 @@ class Broker:
                  choices, default_seconds: int, danger: bool = False,
                  allow_trust: bool = True) -> None:
         """Raise Denied unless a live grant covers this, or the user approves."""
+        left = self.unattended_left()
+        if left > 0 and (action != "delete" or config.get("trust_covers_delete")):
+            audit.record("auto_approved", action=action, item=query,
+                         client=client.name or "unknown", unattended="True",
+                         expires_in=f"{left}s")
+            self._notify(f"{action}: {query}", f"Unattended mode ({left}s left)")
+            return
         if action == "delete":
             allow_trust = bool(config.get("trust_covers_delete")) and allow_trust
         grant = self.cache.check(action, query, client.key, allow_trust)
@@ -176,6 +185,17 @@ class Broker:
                      client=client.name or "unknown",
                      remembered=f"{remember}s" if remember else "once",
                      trusted=str(bool(trusted and remember > 0)))
+
+    # -------------------------------------------------------------- unattended
+
+    def unattended_left(self) -> int:
+        return max(0, int(self._unattended_until - time.time()))
+
+    def set_unattended(self, seconds: int) -> None:
+        """Approve every request from every program for this long (0 = off)."""
+        self._unattended_until = time.time() + seconds if seconds > 0 else 0.0
+        audit.record("unattended_on" if seconds > 0 else "unattended_off",
+                     duration=f"{seconds}s")
 
     def _notify(self, title: str, message: str) -> None:
         if callable(self.on_activity):

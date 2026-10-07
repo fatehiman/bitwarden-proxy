@@ -47,8 +47,13 @@ class TrayApp:
         left = self.vault.seconds_left() or 0
         mins = left // 60
         if mins >= 60:
-            return f"Unlocked - locks in {mins // 60}h {mins % 60}m idle"
-        return f"Unlocked - locks in {mins}m idle"
+            text = f"Unlocked - locks in {mins // 60}h {mins % 60}m idle"
+        else:
+            text = f"Unlocked - locks in {mins}m idle"
+        un = self.broker.unattended_left()
+        if un > 0:
+            text = f"UNATTENDED {un // 60 + 1}m left - " + text
+        return text
 
     def _grants_text(self) -> str:
         n = len(self.broker.cache.active())
@@ -64,6 +69,13 @@ class TrayApp:
                              visible=lambda _i: self.vault.is_unlocked),
             pystray.MenuItem(lambda _i: self._grants_text(), self._on_forget,
                              enabled=lambda _i: bool(self.broker.cache.active())),
+            pystray.MenuItem(
+                "Unattended mode (approve everything)",
+                pystray.Menu(
+                    pystray.MenuItem("Turn OFF unattended mode", self._on_unattended_off,
+                                     visible=lambda _i: self.broker.unattended_left() > 0),
+                    *[pystray.MenuItem(label, self._unattended_action(secs))
+                      for label, secs in config.UNATTENDED_CHOICES])),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Open activity log", self._on_open_log),
             pystray.MenuItem("Open settings file", self._on_open_config),
@@ -85,6 +97,20 @@ class TrayApp:
     def _on_lock(self, *_a) -> None:
         self.vault.lock(reason="tray menu")
         self.broker.cache.clear()
+        self.broker.set_unattended(0)
+        self._refresh()
+
+    def _unattended_action(self, seconds: int):
+        def act(*_a) -> None:
+            self.broker.set_unattended(seconds)
+            self._refresh()
+            timer = threading.Timer(seconds + 1, self._refresh)
+            timer.daemon = True
+            timer.start()
+        return act
+
+    def _on_unattended_off(self, *_a) -> None:
+        self.broker.set_unattended(0)
         self._refresh()
 
     def _on_forget(self, *_a) -> None:
@@ -131,6 +157,8 @@ class TrayApp:
         if not self.icon:
             return
         state = "unlocked" if self.vault.is_unlocked else "locked"
+        if self.broker.unattended_left() > 0:
+            state = "unattended"
         try:
             self.icon.icon = icon_mod.make(state)
             self.icon.title = f"{APP_NAME} - {self._status_text()}"

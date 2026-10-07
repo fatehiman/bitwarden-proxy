@@ -70,6 +70,13 @@ grant, made so you can leave your desk. Every use is still logged. Deleting
 still asks unless you set `trust_covers_delete` to true. Trust is per program
 (the path of the caller), so any script run by that same program shares it.
 
+**Unattended mode.** The tray menu can switch on a timed mode where every
+request from every local program is approved, with no check of who is asking.
+Any process on this machine that can reach the loopback API and read
+`runtime.json` gets your vault for that time. Use the shortest time you need.
+The icon is red while it is on, every use is logged (`unattended=True`), and
+delete still asks. Quit, Lock now and Turn OFF all end it.
+
 **Approval fatigue.** If you click Approve without reading, the dialog achieves
 nothing. The button is disabled for the first 500 ms to stop a stray click or
 keystroke landing on it, `Escape` denies, closing the window denies, and no

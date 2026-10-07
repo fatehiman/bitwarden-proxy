@@ -71,6 +71,10 @@ Key: `(action, query, calling program)` — all lower-cased.
   app", stored as a second table in `cache.py` keyed by calling program only. It
   covers every action on every item for the chosen time (1 minute to 6 hours,
   writes included). `delete` is excluded unless `trust_covers_delete` is true.
+- **Unattended mode** is one timestamp on the broker (`_unattended_until`), set
+  from the tray menu. While it is in the future, `_approve` returns at once for
+  every client. It is checked before the cache, and delete is excluded the same
+  way as for trust.
 - Reads offer up to 6 hours, writes up to 5 minutes - unless trust is ticked,
   which offers the full read list.
 - Every use of a grant is logged, and raises a tray balloon, so silent access is

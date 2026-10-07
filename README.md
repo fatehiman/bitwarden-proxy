@@ -55,6 +55,11 @@ read and write goes through it.
   that program is never asked again - for reads, searches, creates and edits -
   until the chosen time ends (up to 6 hours). Use it when you leave your desk.
   Delete still asks. Windows lock or sleep still locks the vault and drops it.
+- **Unattended mode.** Tray right-click → *Unattended mode*, pick a time
+  (1m, 5m, 15m, 30m, 1h, 2h, 3h, 4h, 8h). Every request from every program is
+  approved with no dialog until the time ends. The tray icon turns **red**.
+  Turn it off early from the same menu. Delete still asks. The vault must be
+  unlocked first, and Windows lock/sleep still locks it.
 - **Read, search, create and edit.** Agent Access could only read.
 - **Folders.** List them, create them (including missing parent levels), file
   items into them, and search one folder at a time.
