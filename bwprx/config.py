@@ -29,6 +29,10 @@ WRITE_REMEMBER_CHOICES = [
     ("5 minutes", 5 * 60),
 ]
 
+# Durations offered when "I trust this app" is ticked. No "just this once":
+# trust always has a length. Writes can be trusted this long too.
+TRUST_CHOICES = [c for c in READ_REMEMBER_CHOICES if c[1] > 0]
+
 DEFAULTS: Dict[str, Any] = {
     # Vault session
     "idle_timeout_minutes": 360,        # 6h; timer resets on every approved request
@@ -40,6 +44,10 @@ DEFAULTS: Dict[str, Any] = {
     "approval_timeout_seconds": 120,    # no answer => denied
     "default_read_remember_seconds": 0,
     "default_write_remember_seconds": 0,
+    # Length pre-selected when the user ticks "I trust this app".
+    "default_trust_seconds": 30 * 60,
+    # Trust never covers delete unless this is true.
+    "trust_covers_delete": False,
     # Passwords generated on the app's side, so they never reach the agent
     "generate_length": 24,
     # Searching returns titles, usernames and URIs but never secrets. Approving

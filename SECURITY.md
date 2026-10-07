@@ -63,6 +63,13 @@ files directly.
 exact program with no prompt. That is the point, and it is a real reduction in
 security. Prefer short windows. Every use is still logged.
 
+**Trusting an app.** The dialog has a checkbox, off by default: "I trust this
+app". While it is live, that program may read, search, create and edit
+anything, with no prompt, for the time chosen (up to 6 hours). This is a large
+grant, made so you can leave your desk. Every use is still logged. Deleting
+still asks unless you set `trust_covers_delete` to true. Trust is per program
+(the path of the caller), so any script run by that same program shares it.
+
 **Approval fatigue.** If you click Approve without reading, the dialog achieves
 nothing. The button is disabled for the first 500 ms to stop a stray click or
 keystroke landing on it, `Escape` denies, closing the window denies, and no
@@ -102,8 +109,8 @@ surfacing for `google key`, say — that is exactly what the dialog is for:
 decline it there. A denial costs nothing; a search that silently comes back
 empty because it was too strict is the worse failure mode.
 
-**Writes remember for at most 5 minutes.** Writes are rare and not reversible.
-A 6-hour standing permission to modify vault items is not a trade worth making.
+**Writes remember for at most 5 minutes**, unless you tick "I trust this app".
+Writes are rare and not reversible, so a long write permission is opt-in only.
 
 **Timeout means deny.** An unanswered dialog is denied, never approved.
 

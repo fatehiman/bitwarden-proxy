@@ -156,7 +156,10 @@ class ApprovalRequest:
     def __init__(self, action: str, title: str, summary: str,
                  details: List[Tuple[str, str]], client: str,
                  remember_choices: List[Tuple[str, int]],
-                 default_remember: int = 0, danger: bool = False) -> None:
+                 default_remember: int = 0, danger: bool = False,
+                 offer_trust: bool = False,
+                 trust_choices: Optional[List[Tuple[str, int]]] = None,
+                 default_trust: int = 0) -> None:
         self.action = action
         self.title = title
         self.summary = summary
@@ -165,10 +168,13 @@ class ApprovalRequest:
         self.remember_choices = remember_choices
         self.default_remember = default_remember
         self.danger = danger
+        self.offer_trust = offer_trust and bool(trust_choices)
+        self.trust_choices = trust_choices or []
+        self.default_trust = default_trust
 
 
-def ask_approval(root: tk.Tk, req: ApprovalRequest) -> Tuple[bool, int]:
-    """Show the dialog. Returns (approved, remember_seconds)."""
+def ask_approval(root: tk.Tk, req: ApprovalRequest) -> Tuple[bool, int, bool]:
+    """Show the dialog. Returns (approved, remember_seconds, trust_app)."""
     timeout = int(config.get("approval_timeout_seconds"))
     deadline = time.time() + timeout
 
@@ -214,26 +220,53 @@ def ask_approval(root: tk.Tk, req: ApprovalRequest) -> Tuple[bool, int]:
     combo.grid(row=row, column=1, sticky="w", pady=(10, 0))
     row += 1
 
-    ttk.Label(frm, text="This applies to this exact item and this program only.",
-              foreground="#555", wraplength=430).grid(
+    note = tk.StringVar(value="This applies to this exact item and this program only.")
+    trust = tk.BooleanVar(value=False)  # never ticked by default
+
+    def current_choices() -> List[Tuple[str, int]]:
+        return req.trust_choices if trust.get() else req.remember_choices
+
+    def on_trust_toggle() -> None:
+        choices = current_choices()
+        names = [c[0] for c in choices]
+        combo.configure(values=names)
+        wanted = req.default_trust if trust.get() else req.default_remember
+        remember.set(next((l for l, s in choices if s == wanted), names[0]))
+        if trust.get():
+            note.set("This program will not be asked about anything - reads, "
+                     "searches, creates, edits - until the time is up. "
+                     "Deleting an item still asks.")
+        else:
+            note.set("This applies to this exact item and this program only.")
+
+    if req.offer_trust:
+        ttk.Checkbutton(
+            frm, text="I trust this app - never ask again for ANY action "
+                      "(for the time chosen above)",
+            variable=trust, command=on_trust_toggle).grid(
+            row=row, column=0, columnspan=2, sticky="w", pady=(8, 0))
+        row += 1
+
+    ttk.Label(frm, textvariable=note, foreground="#555", wraplength=430).grid(
         row=row, column=0, columnspan=2, sticky="w", pady=(4, 12))
     row += 1
 
-    result: List[Tuple[bool, int]] = [(False, 0)]
+    result: List[Tuple[bool, int, bool]] = [(False, 0, False)]
     countdown = tk.StringVar(value="")
 
     def chosen_seconds() -> int:
-        for lbl, secs in req.remember_choices:
+        for lbl, secs in current_choices():
             if lbl == remember.get():
                 return secs
         return 0
 
     def approve(*_a):
-        result[0] = (True, chosen_seconds())
+        secs = chosen_seconds()
+        result[0] = (True, secs, bool(trust.get()) and secs > 0)
         win.destroy()
 
     def deny(*_a):
-        result[0] = (False, 0)
+        result[0] = (False, 0, False)
         win.destroy()
 
     btns = ttk.Frame(frm)
@@ -260,7 +293,7 @@ def ask_approval(root: tk.Tk, req: ApprovalRequest) -> Tuple[bool, int]:
     def tick():
         left = int(deadline - time.time())
         if left <= 0:
-            result[0] = (False, 0)
+            result[0] = (False, 0, False)
             try:
                 win.destroy()
             except tk.TclError:

@@ -3,6 +3,10 @@
 A grant covers one action on one item asked for by one program. An agent that
 uploads twenty files needs the same credential twenty times; without this it
 would raise twenty dialogs. Asking for a *different* item always prompts again.
+
+A *trust* grant is wider: it covers every action on every item for one program,
+so the user can walk away. It never covers actions the caller marks as
+untrustable (delete).
 """
 
 from __future__ import annotations
@@ -33,22 +37,41 @@ class ApprovalCache:
     def __init__(self) -> None:
         self._lock = threading.Lock()
         self._grants: Dict[Key, Grant] = {}
+        self._trusts: Dict[str, Grant] = {}  # client -> blanket grant
 
     @staticmethod
     def _key(action: str, query: str, client: str) -> Key:
         return (action.strip().lower(), query.strip().lower(), client.strip().lower())
 
-    def check(self, action: str, query: str, client: str) -> Optional[Grant]:
-        """Return a live grant for this exact request, counting the use."""
+    def check(self, action: str, query: str, client: str,
+              allow_trust: bool = True) -> Optional[Grant]:
+        """Return a live grant for this request, counting the use.
+
+        An exact grant wins; otherwise a blanket trust grant for the client
+        applies, unless the caller says this action must not use it.
+        """
         k = self._key(action, query, client)
         now = time.time()
         with self._lock:
             self._purge(now)
             g = self._grants.get(k)
+            if g is None and allow_trust:
+                g = self._trusts.get(client.strip().lower())
             if g is None:
                 return None
             g.uses += 1
             return g
+
+    def trust(self, client: str, seconds: int) -> Optional[Grant]:
+        """Trust a program for every action until the time runs out."""
+        if seconds <= 0:
+            return None
+        now = time.time()
+        g = Grant(action="*", query="*", client=client,
+                  expires_at=now + seconds, granted_at=now)
+        with self._lock:
+            self._trusts[client.strip().lower()] = g
+        return g
 
     def grant(self, action: str, query: str, client: str, seconds: int) -> Optional[Grant]:
         if seconds <= 0:
@@ -64,14 +87,18 @@ class ApprovalCache:
         now = time.time()
         with self._lock:
             self._purge(now)
-            return sorted(self._grants.values(), key=lambda g: g.expires_at)
+            both = list(self._grants.values()) + list(self._trusts.values())
+            return sorted(both, key=lambda g: g.expires_at)
 
     def clear(self) -> int:
         with self._lock:
-            n = len(self._grants)
+            n = len(self._grants) + len(self._trusts)
             self._grants.clear()
+            self._trusts.clear()
             return n
 
     def _purge(self, now: float) -> None:
         for k in [k for k, g in self._grants.items() if g.expires_at <= now]:
             self._grants.pop(k, None)
+        for k in [k for k, g in self._trusts.items() if g.expires_at <= now]:
+            self._trusts.pop(k, None)

@@ -51,6 +51,10 @@ read and write goes through it.
 - **"Don't ask again for…"** — `1m / 5m / 10m / 30m / 1h / 2h / 3h / 6h` for
   reads, and `1m / 5m` for writes. An agent uploading twenty files asks once, not
   twenty times.
+- **"I trust this app".** A checkbox in the dialog, off by default. Tick it and
+  that program is never asked again - for reads, searches, creates and edits -
+  until the chosen time ends (up to 6 hours). Use it when you leave your desk.
+  Delete still asks. Windows lock or sleep still locks the vault and drops it.
 - **Read, search, create and edit.** Agent Access could only read.
 - **Folders.** List them, create them (including missing parent levels), file
   items into them, and search one folder at a time.
@@ -251,6 +255,8 @@ bwprx-client status
 | `require_approval_for_list` | `true` | ask before `find` too |
 | `notify_on_auto_approve` | `true` | tray balloon when a remembered grant is used |
 | `generate_length` | `24` | default generated password length |
+| `default_trust_seconds` | `1800` | time pre-selected when "I trust this app" is ticked |
+| `trust_covers_delete` | `false` | if `true`, trust also skips the delete prompt |
 
 Restart the tray app after editing.
 

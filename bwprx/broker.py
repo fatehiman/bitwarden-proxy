@@ -131,9 +131,12 @@ class Broker:
 
     def _approve(self, *, action: str, query: str, client: ClientInfo,
                  title: str, summary: str, details: List[Tuple[str, str]],
-                 choices, default_seconds: int, danger: bool = False) -> None:
+                 choices, default_seconds: int, danger: bool = False,
+                 allow_trust: bool = True) -> None:
         """Raise Denied unless a live grant covers this, or the user approves."""
-        grant = self.cache.check(action, query, client.key)
+        if action == "delete":
+            allow_trust = bool(config.get("trust_covers_delete")) and allow_trust
+        grant = self.cache.check(action, query, client.key, allow_trust)
         if grant is not None:
             audit.record("auto_approved", action=action, item=query,
                          client=client.name or "unknown", use=grant.uses,
@@ -144,7 +147,7 @@ class Broker:
 
         with self._approval_lock:
             # Another thread may have been granted permission while we queued.
-            grant = self.cache.check(action, query, client.key)
+            grant = self.cache.check(action, query, client.key, allow_trust)
             if grant is not None:
                 audit.record("auto_approved", action=action, item=query,
                              client=client.name or "unknown", use=grant.uses)
@@ -153,19 +156,26 @@ class Broker:
             req = ApprovalRequest(
                 action=action, title=title, summary=summary, details=details,
                 client=client.describe(), remember_choices=choices,
-                default_remember=default_seconds, danger=danger)
-            approved, remember = self.ui.call(lambda root: ask_approval(root, req))
+                default_remember=default_seconds, danger=danger,
+                offer_trust=allow_trust,
+                trust_choices=config.TRUST_CHOICES,
+                default_trust=int(config.get("default_trust_seconds")))
+            approved, remember, trusted = self.ui.call(
+                lambda root: ask_approval(root, req))
 
         if not approved:
             audit.record("denied", action=action, item=query,
                          client=client.name or "unknown")
             raise Denied(f"{action} denied by user")
 
-        if remember > 0:
+        if trusted and remember > 0:
+            self.cache.trust(client.key, remember)
+        elif remember > 0:
             self.cache.grant(action, query, client.key, remember)
         audit.record("approved", action=action, item=query,
                      client=client.name or "unknown",
-                     remembered=f"{remember}s" if remember else "once")
+                     remembered=f"{remember}s" if remember else "once",
+                     trusted=str(bool(trusted and remember > 0)))
 
     def _notify(self, title: str, message: str) -> None:
         if callable(self.on_activity):
@@ -511,7 +521,8 @@ class Broker:
             details=details,
             choices=[("Just this once", 0)],
             default_seconds=0,
-            danger=True)
+            danger=True,
+            allow_trust=False)
 
         self.vault.touch()
         self.vault.delete_item(item_id, permanent=permanent)
