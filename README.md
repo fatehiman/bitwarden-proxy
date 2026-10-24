@@ -258,7 +258,7 @@ bwprx-client status
 | `port` | `7395` | loopback port for the API |
 | `approval_timeout_seconds` | `120` | no answer counts as **deny** |
 | `require_approval_for_list` | `true` | ask before `find` too |
-| `notify_on_auto_approve` | `true` | tray balloon when a remembered grant is used |
+| `notify_on_auto_approve` | `true` | tray balloon when a remembered grant, trust or unattended mode is used. It names the item as `Folder/Name`, not the id |
 | `generate_length` | `24` | default generated password length |
 | `default_trust_seconds` | `1800` | time pre-selected when "I trust this app" is ticked |
 | `trust_covers_delete` | `false` | if `true`, trust also skips the delete prompt |

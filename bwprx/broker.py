@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import threading
 import time
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 from . import audit, config
 from .cache import ApprovalCache
@@ -101,6 +101,7 @@ class Broker:
         # Serialised so two agents cannot stack two dialogs on top of each other.
         self._approval_lock = threading.Lock()
         self._unattended_until = 0.0
+        self._folder_cache: Tuple[float, Dict[str, str]] = (0.0, {})
         self.on_activity = None  # set by the tray for balloon notifications
 
     # ------------------------------------------------------------------ unlock
@@ -134,23 +135,40 @@ class Broker:
     def _approve(self, *, action: str, query: str, client: ClientInfo,
                  title: str, summary: str, details: List[Tuple[str, str]],
                  choices, default_seconds: int, danger: bool = False,
-                 allow_trust: bool = True) -> None:
-        """Raise Denied unless a live grant covers this, or the user approves."""
+                 allow_trust: bool = True,
+                 label: Union[str, Callable[[], str], None] = None) -> None:
+        """Raise Denied unless a live grant covers this, or the user approves.
+
+        `label` is what a human should see for the item ("Folder/Name"), as a
+        string or a function (only called when needed, since it may ask `bw`).
+        The raw `query` is often a long id and stays the cache key.
+        """
+        shown: List[str] = []
+
+        def human() -> str:
+            if not shown:
+                try:
+                    text = label() if callable(label) else label
+                except Exception:
+                    text = None
+                shown.append(text or query)
+            return shown[0]
+
         left = self.unattended_left()
         if left > 0 and (action != "delete" or config.get("trust_covers_delete")):
-            audit.record("auto_approved", action=action, item=query,
+            audit.record("auto_approved", action=action, item=query, name=human(),
                          client=client.name or "unknown", unattended="True",
                          expires_in=f"{left}s")
-            self._notify(f"{action}: {query}", f"Unattended mode ({left}s left)")
+            self._notify(f"{action}: {human()}", f"Unattended mode ({left}s left)")
             return
         if action == "delete":
             allow_trust = bool(config.get("trust_covers_delete")) and allow_trust
         grant = self.cache.check(action, query, client.key, allow_trust)
         if grant is not None:
-            audit.record("auto_approved", action=action, item=query,
+            audit.record("auto_approved", action=action, item=query, name=human(),
                          client=client.name or "unknown", use=grant.uses,
                          expires_in=f"{grant.seconds_left}s")
-            self._notify(f"{action}: {query}",
+            self._notify(f"{action}: {human()}",
                          f"Auto-approved ({grant.seconds_left}s left)")
             return
 
@@ -158,7 +176,7 @@ class Broker:
             # Another thread may have been granted permission while we queued.
             grant = self.cache.check(action, query, client.key, allow_trust)
             if grant is not None:
-                audit.record("auto_approved", action=action, item=query,
+                audit.record("auto_approved", action=action, item=query, name=human(),
                              client=client.name or "unknown", use=grant.uses)
                 return
 
@@ -185,6 +203,27 @@ class Broker:
                      client=client.name or "unknown",
                      remembered=f"{remember}s" if remember else "once",
                      trusted=str(bool(trusted and remember > 0)))
+
+    # ------------------------------------------------------------------ labels
+
+    def _folder_name(self, folder_id: Optional[str]) -> Optional[str]:
+        if not folder_id:
+            return None
+        stamp, names = self._folder_cache
+        if folder_id not in names or time.time() - stamp > 300:
+            try:
+                names = {f["id"]: f.get("name") or ""
+                         for f in self.vault.list_folders()}
+            except VaultError:
+                return None
+            self._folder_cache = (time.time(), names)
+        return names.get(folder_id)
+
+    def _item_label(self, item: Dict[str, Any], fallback: str = "") -> str:
+        """`Folder/Name` for a vault item, or just the name at top level."""
+        name = item.get("name") or fallback
+        folder = self._folder_name(item.get("folderId"))
+        return f"{folder}/{name}" if folder else name
 
     # -------------------------------------------------------------- unattended
 
@@ -222,6 +261,7 @@ class Broker:
         ]
         self._approve(
             action="read", query=query, client=client,
+            label=lambda: self._item_label(item, query),
             title="bwprx - credential request",
             summary="An agent is asking for a credential from your vault.",
             details=details,
@@ -301,6 +341,7 @@ class Broker:
             ]
             self._approve(
                 action="list", query=search or "*", client=client,
+                label=f"search: {search}" if search else "search: everything",
                 title="bwprx - vault search",
                 summary="An agent wants to search your vault for item names.",
                 details=details,
@@ -362,6 +403,7 @@ class Broker:
             details.append(("Notes", notes))
         self._approve(
             action="create", query=name, client=client,
+            label=f"{folder_path}/{name}" if folder_path else name,
             title="bwprx - create vault item",
             summary="An agent wants to CREATE a new login in your vault.",
             details=details,
@@ -415,6 +457,7 @@ class Broker:
         ]
         self._approve(
             action="edit", query=item_id, client=client,
+            label=lambda: self._item_label(existing, item_id),
             title="bwprx - edit vault item",
             summary="An agent wants to EDIT an existing login in your vault.",
             details=details,
@@ -501,6 +544,7 @@ class Broker:
         ]
         self._approve(
             action="move", query=item_id, client=client,
+            label=lambda: self._item_label(existing, item_id),
             title="bwprx - move vault item",
             summary="An agent wants to MOVE an item to another folder.",
             details=details,
@@ -536,6 +580,7 @@ class Broker:
         # "don't ask again" list is a single entry: this once, or not at all.
         self._approve(
             action="delete", query=item_id, client=client,
+            label=lambda: self._item_label(existing, item_id),
             title="bwprx - delete vault item",
             summary="An agent wants to DELETE an item from your vault.",
             details=details,

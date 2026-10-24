@@ -78,7 +78,8 @@ Key: `(action, query, calling program)` — all lower-cased.
 - Reads offer up to 6 hours, writes up to 5 minutes - unless trust is ticked,
   which offers the full read list.
 - Every use of a grant is logged, and raises a tray balloon, so silent access is
-  still visible.
+  still visible. Both show the item as `Folder/Name` (looked up from the item and
+  a 5-minute folder-name cache), never the raw id; the id stays the cache key.
 - Locking the vault clears every grant.
 
 ## HTTP API
