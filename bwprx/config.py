@@ -64,6 +64,9 @@ DEFAULTS: Dict[str, Any] = {
     # Show a tray balloon when a remembered approval is used without a dialog,
     # so silent access is still visible.
     "notify_on_auto_approve": True,
+    # Tray menu "Mute alert sound". Off by default: a loud melody plays while
+    # bwprx waits for the user (master password, approval).
+    "mute_alert": False,
     # Housekeeping
     "audit_max_bytes": 2 * 1024 * 1024,
 }

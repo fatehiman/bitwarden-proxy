@@ -14,7 +14,7 @@ import tkinter as tk
 from tkinter import ttk
 from typing import Any, Callable, List, Optional, Tuple
 
-from . import config
+from . import alert, config
 
 # Buttons stay disabled this long after a dialog appears, so a keystroke or
 # click already in flight cannot land on "Approve".
@@ -144,7 +144,11 @@ def ask_master_password(root: tk.Tk, account: Optional[str],
     _center(win)
     _raise(win)
     entry.focus_force()
-    root.wait_window(win)
+    alert.start()
+    try:
+        root.wait_window(win)
+    finally:
+        alert.stop()
     return result[0]
 
 
@@ -308,5 +312,9 @@ def ask_approval(root: tk.Tk, req: ApprovalRequest) -> Tuple[bool, int, bool]:
     win.protocol("WM_DELETE_WINDOW", deny)
     _center(win)
     _raise(win)
-    root.wait_window(win)
+    alert.start()
+    try:
+        root.wait_window(win)
+    finally:
+        alert.stop()
     return result[0]

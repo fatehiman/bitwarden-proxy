@@ -11,7 +11,7 @@ from typing import Optional
 
 import pystray
 
-from . import audit, config, icon as icon_mod
+from . import alert, audit, config, icon as icon_mod
 from .broker import Broker, Denied
 from .paths import audit_path, config_path
 from .server import ApiServer
@@ -65,6 +65,8 @@ class TrayApp:
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Unlock vault...", self._on_unlock,
                              visible=lambda _i: not self.vault.is_unlocked),
+            pystray.MenuItem("Sync now", self._on_sync,
+                             visible=lambda _i: self.vault.is_unlocked),
             pystray.MenuItem("Lock now", self._on_lock,
                              visible=lambda _i: self.vault.is_unlocked),
             pystray.MenuItem(lambda _i: self._grants_text(), self._on_forget,
@@ -76,6 +78,8 @@ class TrayApp:
                                      visible=lambda _i: self.broker.unattended_left() > 0),
                     *[pystray.MenuItem(label, self._unattended_action(secs))
                       for label, secs in config.UNATTENDED_CHOICES])),
+            pystray.MenuItem("Mute alert sound", self._on_mute,
+                             checked=lambda _i: bool(config.get("mute_alert"))),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem("Open activity log", self._on_open_log),
             pystray.MenuItem("Open settings file", self._on_open_config),
@@ -94,6 +98,18 @@ class TrayApp:
             self._refresh()
         threading.Thread(target=work, daemon=True).start()
 
+    def _on_sync(self, *_a) -> None:
+        def work():
+            try:
+                self.vault.sync()
+                audit.record("vault_synced")
+                self._notify_always("Vault synced", "bwprx has the latest vault from Bitwarden.")
+            except VaultError as exc:
+                audit.record("vault_sync_failed", error=str(exc)[:200])
+                self._notify_always("Sync failed", str(exc)[:200])
+            self._refresh()
+        threading.Thread(target=work, daemon=True).start()
+
     def _on_lock(self, *_a) -> None:
         self.vault.lock(reason="tray menu")
         self.broker.cache.clear()
@@ -108,6 +124,10 @@ class TrayApp:
             timer.daemon = True
             timer.start()
         return act
+
+    def _on_mute(self, *_a) -> None:
+        alert.set_muted(not config.get("mute_alert"))
+        self._refresh()
 
     def _on_unattended_off(self, *_a) -> None:
         self.broker.set_unattended(0)
@@ -147,6 +167,15 @@ class TrayApp:
 
     def _notify(self, title: str, message: str) -> None:
         if not config.get("notify_on_auto_approve") or not self.icon:
+            return
+        try:
+            self.icon.notify(message, title)
+        except Exception:
+            pass
+
+    def _notify_always(self, title: str, message: str) -> None:
+        """Balloon for a result the user asked for, whatever notify_on_auto_approve says."""
+        if not self.icon:
             return
         try:
             self.icon.notify(message, title)

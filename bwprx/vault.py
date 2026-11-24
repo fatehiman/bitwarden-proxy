@@ -442,5 +442,13 @@ class Vault:
             raise VaultError(err or "bw delete item failed")
 
     def sync(self) -> None:
+        """Pull the latest vault from the server into the bw CLI's local copy.
+
+        The CLI keeps its own data file, so a change made in the Bitwarden app
+        or website is invisible here until this runs.
+        """
         self._require_session()
-        self._run(["sync"])
+        proc = self._run(["sync"])
+        if proc.returncode != 0:
+            err = proc.stderr.decode("utf-8", "replace").strip()
+            raise VaultError(err or "bw sync failed")
